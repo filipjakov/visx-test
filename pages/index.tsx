@@ -1,8 +1,8 @@
 import type { NextPage } from "next";
-import styles from "../styles/Home.module.css";
+import { Chart } from "../components/MainChart";
 
 const Home: NextPage = () => {
-  return <div className={styles.container}></div>;
+  return <Chart width={500} height={500} />;
 };
 
 export default Home;
