@@ -1,5 +1,5 @@
-import { animate, motion, useMotionValue, useTransform } from "framer-motion";
-import { ComponentProps, FC, SVGProps, useEffect } from "react";
+import { animate, motion, useMotionValue } from "framer-motion";
+import { ComponentProps, FC, useEffect } from "react";
 
 interface Props extends ComponentProps<typeof motion.svg> {
   newX: number;

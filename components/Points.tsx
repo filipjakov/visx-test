@@ -1,4 +1,4 @@
-import { CircleSubject, Label } from "@visx/annotation";
+import { Label } from "@visx/annotation";
 import { Group } from "@visx/group";
 import { animate, motion, useMotionValue } from "framer-motion";
 import { ComponentProps, FC, useEffect } from "react";
@@ -50,6 +50,7 @@ export const Point: FC<PointProps> = ({
 
   return (
     <motion.g style={{ x, y }} {...rest}>
+      {/* Translate by half the size of the svg */}
       <Group transform="translate(-10, -10)">
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -76,7 +77,7 @@ export const Point: FC<PointProps> = ({
         titleFontWeight={400}
         subtitleFontSize={13}
         subtitleFontWeight={400}
-        // TODO: smaller on bigger screens, check how to solve
+        // TODO: this gets smaller on bigger screens, check on how to solve
         subtitleDy={2}
         titleProps={titleProps}
         subtitleProps={subtitleProps}
