@@ -1,56 +1,32 @@
-import { scaleLinear } from "@visx/scale";
-import { useCallback, useEffect, useMemo, useState } from "react";
-
-import { LinearGradient } from "@visx/gradient";
-import { max } from "d3-array";
-
 import { Axis } from "@visx/axis";
-import { curveBasisOpen } from "@visx/curve";
+import { curveLinear } from "@visx/curve";
 import { Group } from "@visx/group";
+import { scaleLinear } from "@visx/scale";
 import { LinePath } from "@visx/shape";
+import { ComponentProps, useEffect, useRef, useState } from "react";
 
 import { Path } from "./Path";
 
-import { Rocket } from "./Rocket";
-import { animate } from "framer-motion";
+import { animate, AnimatePresence } from "framer-motion";
+import { Circle } from "./Circle";
 
 import throttle from "lodash.throttle";
+import { Point } from "./Points";
 
-/**
- * TODO:
- * - useTransform to calculate the rotation angle? ✅
- * - why is motion.g transition duration not working? ✅
- * - how to animate axis growing (https://stackoverflow.com/questions/71328594/axis-scale-shift-in-d3-js) ✅
- *    - how about interpolating the axis scale??? ✅
- * - how to sync everything so that it animates with new data??? (clip pathing + domain changing???)
- *    - solved by interpolating everything with js
- */
+const formatAxisValue: ComponentProps<typeof Axis>["tickFormat"] = (val) =>
+  val === 0 ? val : val.toFixed(1) + "x";
 
-// Initialize some variables
-const chartSeparation = 30;
-const GRADIENT_ID = "brush_gradient";
-export const background = "#584153";
-export const background2 = "#af8baf";
-
-const axisColor = "#fff";
-
-const axisBottomTickLabelProps = {
-  textAnchor: "middle" as const,
-  fontFamily: "Arial",
-  fontSize: 10,
-  fill: axisColor,
-};
+const axisColor = "rgba(255 255 255 / 0.34)";
 
 const axisLeftTickLabelProps = {
-  dx: "-0.25em",
+  dx: "-0.3125em",
   dy: "0.25em",
-  fontFamily: "Arial",
-  fontSize: 10,
+  fontSize: "0.8125rem",
   textAnchor: "end" as const,
   fill: axisColor,
 };
 
-export type BrushProps = {
+export type Props = {
   width: number;
   height: number;
   margin?: { top: number; right: number; bottom: number; left: number };
@@ -62,140 +38,159 @@ export function Chart({
   height,
   margin = {
     top: 20,
-    left: 50,
-    bottom: 20,
-    right: 20,
+    left: 81,
+    bottom: 28,
+    right: 68,
   },
-}: BrushProps) {
-  const [stock, setStock] = useState([0, 1]);
+}: Props) {
+  const [stock, setStock] = useState([1]);
+  const pathRef = useRef<SVGPathElement>(null);
+
+  const [points, setPoints] = useState([]);
 
   useEffect(() => {
     const i = setInterval(() => {
-      setStock((s) => s.concat(1.1 ** (s.length - 2)));
+      if (stock.length > 29) {
+        return;
+      }
+
+      setStock((s) => s.concat(1.05 ** (s.length - 1)));
+
+      if (!(stock.length % 10)) {
+        setPoints((s) => s.concat([stock.length]));
+      }
     }, 0.5 * 1000);
 
     return () => clearInterval(i);
-  }, []);
+  }, [stock.length]);
 
   const innerHeight = height - margin.top - margin.bottom;
-  const topChartBottomMargin = chartSeparation + 10;
-  const topChartHeight = innerHeight - topChartBottomMargin;
 
   // bounds
   const xMax = Math.max(width - margin.left - margin.right, 0);
-  const yMax = Math.max(topChartHeight, 0);
+  const yMax = Math.max(innerHeight - margin.bottom, 0);
 
+  const onUpdateTime = useRef((progress: number) => {
+    const newScale = scaleLinear<number>({
+      range: [0, xMax],
+      domain: [0, progress + 1],
+    });
+    setTimeScale(() => newScale);
+  });
+
+  const onUpdateValue = useRef((progress: number) => {
+    const newScale = scaleLinear<number>({
+      range: [yMax, 0],
+      domain: [1, progress + 1],
+    });
+    setNumberScale(() => newScale);
+  });
+
+  // TODO: somehow reuse above function?
+  // TODO: do i even need the
   const [timeScale, setTimeScale] = useState(() =>
     scaleLinear<number>({
       range: [0, xMax],
       domain: [0, stock.length + 1],
-      round: true,
     })
   );
 
   const [numberScale, setNumberScale] = useState(() =>
     scaleLinear<number>({
       range: [yMax, 0],
-      domain: [0, stock[stock.length - 1] + 1],
-      round: true,
+      domain: [1, stock[stock.length - 1] + 1],
     })
   );
 
-  const onUpdateTime = useCallback(
-    throttle((progress: number) => {
-      const newScale = scaleLinear<number>({
-        range: [0, xMax],
-        domain: [0, progress + 1],
-      });
-
-      setTimeScale(() => newScale);
-    }, 50),
-    []
-  );
-
-  const onUpdateValue = useCallback(
-    throttle((progress: number) => {
-      const newScale = scaleLinear<number>({
-        range: [yMax, 0],
-        domain: [0, progress + 1],
-      });
-
-      setNumberScale(() => newScale);
-    }, 50),
-    []
-  );
-
   useEffect(() => {
-    animate(stock.length, stock.length + 1, {
+    const controls = animate(stock.length, stock.length + 1, {
       duration: 0.5,
       ease: "linear",
-      onUpdate: onUpdateTime,
+      onUpdate: throttle(onUpdateTime.current, 20),
     });
-  }, [onUpdateTime, stock.length]);
+
+    return () => controls.stop();
+  }, [stock]);
 
   useEffect(() => {
-    animate(stock[stock.length - 2], stock[stock.length - 1], {
+    const controls = animate(stock[stock.length - 2], stock[stock.length - 1], {
       duration: 0.5,
       ease: "linear",
-      onUpdate: onUpdateValue,
+      onUpdate: throttle(onUpdateValue.current, 20),
     });
-  }, [onUpdateValue, stock]);
 
-  const newX = timeScale(stock.length - 2);
-  const newY = numberScale(stock[stock.length - 1]);
-  const dy = stock[stock.length - 1] - stock[stock.length - 2];
-  const dx = 1;
-  const angle = (Math.atan2(dy, dx) * 180) / -Math.PI + 45;
+    return () => controls.stop();
+  }, [stock]);
+
+  let newX = timeScale(0);
+  let newY = numberScale(stock[0]);
+
+  if (pathRef.current?.getTotalLength()) {
+    const point = pathRef.current.getPointAtLength(
+      pathRef.current.getTotalLength()
+    );
+    newX = point.x;
+    newY = point.y;
+  }
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`}>
-      <LinearGradient
-        id={GRADIENT_ID}
-        from={background}
-        to={background2}
-        rotate={45}
-      />
-      <rect
-        x={0}
-        y={0}
-        width={width}
-        height={height}
-        fill={`url(#${GRADIENT_ID})`}
-        rx={8}
-      />
-
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ background: "#5cc9ff10" }}>
       <Group left={margin.left} top={margin.top}>
         <LinePath
           data={stock}
           x={(d) => timeScale(stock.indexOf(d))!}
           y={(d) => numberScale(d)}
-          curve={curveBasisOpen}
+          curve={curveLinear}
         >
-          {({ path }) => <Path d={path(stock) || ""} />}
+          {({ path }) => <Path ref={pathRef} d={path(stock) || ""} />}
         </LinePath>
-
-        <Axis
-          top={topChartHeight}
-          left={0}
-          scale={timeScale}
-          stroke={axisColor}
-          tickStroke={axisColor}
-          tickLabelProps={() => axisBottomTickLabelProps}
-          numTicks={5}
-        />
 
         <Axis
           orientation="left"
           top={0}
-          left={0}
+          left={-13}
           scale={numberScale}
-          stroke={axisColor}
+          stroke="transparent"
           tickStroke={axisColor}
           tickLabelProps={() => axisLeftTickLabelProps}
-          numTicks={5}
+          tickFormat={formatAxisValue}
+          numTicks={6}
+          rangePadding={12}
         />
 
-        <Rocket newX={newX} newY={newY} angle={angle} />
+        <AnimatePresence>
+          <Circle
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            width={44}
+            height={44}
+            newX={newX}
+            newY={newY}
+          />
+        </AnimatePresence>
+
+        {points.length > 0 && (
+          <AnimatePresence>
+            {points.map((point, i) => {
+              const domPoint = pathRef.current!.getPointAtLength(
+                pathRef.current!.getTotalLength() * (point / stock.length)
+              );
+
+              return (
+                <Point
+                  initial={{ opacity: 0 }}
+                  animate={{
+                    opacity: 1,
+                    transition: { duration: 1 },
+                  }}
+                  key={point}
+                  x={domPoint.x}
+                  y={domPoint.y}
+                />
+              );
+            })}
+          </AnimatePresence>
+        )}
       </Group>
     </svg>
   );
